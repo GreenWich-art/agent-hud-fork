@@ -23,7 +23,7 @@ struct OnboardingView: View {
             ZStack(alignment: .top) {
                 LinearGradient(colors: [Color(hex: 0x5b6b8c), Color(hex: 0x7c8aa6)], startPoint: .top, endPoint: .bottom)
                 GlowPreview(
-                    appearance: store.glowAppearance(light: false),
+                    appearance: store.glowAppearance(light: false, preview: true),
                     settings: settings.settings.glow,
                     islandSize: CGSize(width: 190, height: 26),
                     islandRadius: 13,

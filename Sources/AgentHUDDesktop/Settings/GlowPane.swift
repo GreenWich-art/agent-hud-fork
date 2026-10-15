@@ -50,7 +50,7 @@ struct GlowPane: View {
                                              metrics: metrics, screen: screen)
                         } else {
                             GlowPreview(
-                                appearance: store.glowAppearance(light: false, on: screen), settings: current,
+                                appearance: store.glowAppearance(light: false, on: screen, preview: true), settings: current,
                                 islandSize: metrics.islandSize, islandRadius: metrics.islandRadius,
                                 previewsMotion: true
                             )
@@ -207,7 +207,7 @@ struct LogoQueuePreview: View {
             let stop = margin / width
             ZStack(alignment: .top) {
                 GlowPreview(
-                    appearance: store.glowAppearance(light: false, on: screen),
+                    appearance: store.glowAppearance(light: false, on: screen, preview: true),
                     settings: settings.settings.glow(on: screen),
                     islandSize: CGSize(width: width + overhang * 2, height: 2), islandRadius: 0, previewsMotion: true
                 )

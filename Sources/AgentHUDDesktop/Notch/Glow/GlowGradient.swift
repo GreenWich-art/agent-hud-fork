@@ -47,17 +47,33 @@ public struct GlowAppearance: Hashable, Sendable {
     /// Resolves the glow from live status. The colours always follow the quota; activity only decides
     /// how fast the effect runs, so a quiet stretch never makes the glow fade or vanish.
     /// - paused: detection paused by the user → grey, still.
+    /// - awaitingApproval: a permission request waits for the user → warning yellow, breathing fast and deep, so the
+    ///   HUD asks for attention rather than merely reporting it.
     /// - anyAgentActive: at least one agent has a running session → the working period; otherwise the
     ///   idle period, which is longer. The HUD keeps moving either way, so resting still reads as alive.
     public static func resolve(
         levels: [StatusLevel],
         paused: Bool,
         anyAgentActive: Bool,
+        awaitingApproval: Bool = false,
         glow: GlowSettings,
         light: Bool = false
     ) -> GlowAppearance {
         if paused { return .idle() }
         if levels.isEmpty { return .idle() }
+        if awaitingApproval {
+            // The wait outranks the quota: one colour, one rhythm, unmistakable at a glance.
+            let peak = min(1, max(0, glow.brightness))
+            return GlowAppearance(
+                stops: [GradientStop(color: StatusPalette.warning, location: 0),
+                        GradientStop(color: StatusPalette.warning, location: 1)],
+                peakOpacity: peak,
+                troughOpacity: peak * 0.25,
+                breathing: true,
+                breathSeconds: 1,
+                hidden: false
+            )
+        }
         // Always in motion: working breathes fast, resting breathes slowly.
         let period = anyAgentActive ? glow.breathSeconds : glow.idleBreathSeconds
         let peak = min(1, max(0, glow.brightness))

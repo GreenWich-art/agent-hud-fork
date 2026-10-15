@@ -61,6 +61,27 @@ final class GlowAppearanceTests: XCTestCase {
         XCTAssertFalse(a.hidden)
     }
 
+    func testAwaitingApprovalTakesYellowAndABriskRhythm() {
+        let settings = Settings()
+        let a = GlowAppearance.resolve(levels: [.ok, .critical], paused: false, anyAgentActive: false,
+                                       awaitingApproval: true, glow: settings.glow)
+        // The wait outranks the quota: one warning colour across the whole glow.
+        XCTAssertEqual(a.stops.map(\.color), [StatusPalette.warning, StatusPalette.warning])
+        XCTAssertTrue(a.breathing)
+        XCTAssertEqual(a.breathSeconds, 1)
+        // Deep enough to read as a flash from across the room, yet never fully dark.
+        XCTAssertEqual(a.troughOpacity, a.peakOpacity * 0.25, accuracy: 0.001)
+        XCTAssertGreaterThan(a.troughOpacity, 0)
+        XCTAssertFalse(a.hidden)
+    }
+
+    func testPausedStillWinsOverAwaitingApproval() {
+        let a = GlowAppearance.resolve(levels: [.ok], paused: true, anyAgentActive: false,
+                                       awaitingApproval: true, glow: GlowSettings())
+        XCTAssertEqual(a.stops, GlowGradient.idleStops)
+        XCTAssertFalse(a.breathing)
+    }
+
     @MainActor
     func testGlowFollowsPauseAndHide() async {
         let defaults = UserDefaults(suiteName: "AgentHUDTests.\(UUID().uuidString)")!

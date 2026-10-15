@@ -229,6 +229,27 @@ final class TencentBuddyProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(later.discoveredAgents.filter { $0.id.contains("limit:") }.isEmpty)
     }
 
+    func testWorkBuddySessionsRunWhileTheirTranscriptIsFreshAndEndWhenQuiet() async throws {
+        let home = try directory()
+        // A transcript with usage lines carries no turn records; its freshness is the only witness.
+        try write([
+            line("message", message: "m1", usage: #"{"inputTokens":100,"outputTokens":4,"totalTokens":104}"#)
+        ], to: home.appendingPathComponent(".workbuddy/projects/repo/s1.jsonl"))
+        func report(at readAt: Date) async throws -> UsageReport {
+            try await AdditionalUsageProvider(source: .workbuddy, readQuota: { ProviderQuota() },
+                readSessions: { [home] since in
+                    await AdditionalLocalStore(source: .workbuddy, roots: [home.appendingPathComponent(".workbuddy/projects")]).index(since: since)
+                },
+                history: QuotaHistoryStore(ledger: .inMemory()), clock: { readAt }).fetchUsage(agents: [], historyHours: 24)
+        }
+        // The transcript's lines are 10 seconds old: work in flight, so the glow takes the working period.
+        let fresh = try await report(at: now.addingTimeInterval(-10))
+        XCTAssertEqual(fresh.sessions.first?.endedAt, nil, "a fresh WorkBuddy transcript is a session still running")
+        // 10 minutes later the same log says the work has ended: no stop hook ever fired, the quiet window decided.
+        let quiet = try await report(at: now.addingTimeInterval(600))
+        XCTAssertNotNil(quiet.sessions.first?.endedAt, "a transcript quiet past the window is no longer running")
+    }
+
     /// The wall-clock reset time the fixture writes, one the test's `now` also reads in the Mac's own zone.
     private func wallClock(_ date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)

@@ -140,6 +140,13 @@ actor AdditionalUsageProvider: UsageProvider, LedgerRecording {
             guard let stop = finished[local.sessions[index].id] else { continue }
             local.sessions[index].turns = local.sessions[index].turns.map { SessionPhase.stopped($0, atMs: stop) }
         }
+        // The transcript rule reads each session's last write; a Stop hook's completion caps it so a quiet, finished
+        // turn does not look like work still in flight while its final lines are still fresh.
+        let capped: [String: Date] = local.sessions.reduce(into: [:]) { map, session in
+            guard let stop = finished[session.id], let stopDate = RecordCoding.date(stop) as Date?,
+                  let last = session.lastActivity, last > stopDate else { return }
+            map[session.id] = stopDate
+        }
         let quota: ProviderQuota, quotaNotice: String?
         let observedAt = lastQuota?.at ?? now
         switch lastQuota?.result {
@@ -195,7 +202,13 @@ actor AdditionalUsageProvider: UsageProvider, LedgerRecording {
             let model = item.events.max { $0.timestamp < $1.timestamp }?.model ?? "Unknown"
             // The newest turn is the one observed last.
             let turn = item.turns.max { $0.observedAtMs < $1.observedAtMs }
-            let isRunning = SessionPhase.read(.init(turn: turn), rule: .turns, at: now).inFlight
+            // WorkBuddy and CodeBuddy transcripts carry no turn boundaries, so the turns rule could never see their
+            // sessions run. Their logs date every line, so the transcript rule vouches for one instead: in flight
+            // while the log is quiet for less than the rule's own window, and a Stop hook's completion record ends
+            // it at once (the turns stop pass above already stamped that time onto any turn it had).
+            let rule: SessionPhase.SourceRule = source == .workbuddy || source == .codebuddy ? .transcript : .turns
+            let lastWrite = capped[item.id] ?? item.lastActivity
+            let isRunning = SessionPhase.read(.init(turn: turn, lastWriteAt: lastWrite), rule: rule, at: now).inFlight
             return LiveSession(id: item.id, agentId: "\(source.rawValue)-model:\(model)", task: item.title,
                                terminal: item.workspace.map { URL(fileURLWithPath: $0).lastPathComponent },
                                startedAt: start, endedAt: isRunning ? nil : end, pctOfWindow: nil,

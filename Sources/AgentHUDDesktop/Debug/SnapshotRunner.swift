@@ -901,7 +901,7 @@ struct IslandScene: View {
             .background(Color(.sRGB, red: 20 / 255, green: 20 / 255, blue: 24 / 255, opacity: 0.55))
 
             GlowPreview(
-                appearance: store.glowAppearance(light: light),
+                appearance: store.glowAppearance(light: light, preview: true),
                 settings: settings.settings.glow,
                 islandSize: islandSize,
                 islandRadius: radius

@@ -3,11 +3,13 @@ import AgentHUDCore
 @MainActor
 public extension UsageStore {
     /// - screen: which display's glow to resolve; nothing asks for the default one.
-    func glowAppearance(light: Bool, on screen: String? = nil) -> GlowAppearance {
+    /// - preview: the settings' previews resolve without live approvals, so they keep showing the configured glow.
+    func glowAppearance(light: Bool, on screen: String? = nil, preview: Bool = false) -> GlowAppearance {
         let appearance = GlowAppearance.resolve(
             levels: levels,
             paused: isPaused || !isAccessAllowed,
             anyAgentActive: hasLiveSession,
+            awaitingApproval: !preview && hasPendingApproval,
             glow: settings.settings.glow(on: screen),
             light: light
         )
