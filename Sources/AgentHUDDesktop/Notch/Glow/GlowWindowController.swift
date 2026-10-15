@@ -53,6 +53,9 @@ final class GlowWindowController {
         let peakOpacity: Double
         let troughOpacity: Double
         let breathSeconds: Double
+        /// Longer than the key's own period: the pulse that was running when work ended plays itself out cycle by
+        /// cycle at a growing period, so an equal key only means the ease has finished.
+        let easedFrom: Double?
     }
 
     /// Materials for one pending opening. The hover owner retains these until the panel opens or the pointer leaves.
@@ -552,8 +555,12 @@ final class GlowWindowController {
 
     private func applyBreathing(_ appearance: GlowAppearance, pulsesOpacity: Bool) {
         let pulses = appearance.breathing && pulsesOpacity
+        // Work just ended when the period grew: the pulse then eases into the slower rhythm cycle by cycle rather
+        // than restarting at it. Any other change (colours, depth, resume) plays as before.
+        let eased: Double? = (breathKey?.pulses == true && pulses && appearance.breathSeconds > breathKey!.breathSeconds + 0.05)
+            ? breathKey!.breathSeconds : nil
         let key = BreathKey(pulses: pulses, peakOpacity: appearance.peakOpacity, troughOpacity: appearance.troughOpacity,
-                            breathSeconds: appearance.breathSeconds)
+                            breathSeconds: appearance.breathSeconds, easedFrom: eased)
         guard key != breathKey else { return }
         breathKey = key
         glowLayer.removeAnimation(forKey: "breathe")
@@ -562,13 +569,72 @@ final class GlowWindowController {
         glowLayer.opacity = Float(appearance.peakOpacity)
         CATransaction.commit()
         guard pulses else { return }
-        let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = appearance.peakOpacity
-        animation.toValue = appearance.troughOpacity
-        animation.duration = appearance.breathSeconds / 2
-        animation.autoreverses = true
-        animation.repeatCount = .infinity
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        glowLayer.add(animation, forKey: "breathe")
+        if let from = eased {
+            // The relay hands the layer back to a steady idle pulse when the ease has played out.
+            let pulse = Self.windDownPulse(peak: appearance.peakOpacity, trough: appearance.troughOpacity,
+                                           from: from, to: appearance.breathSeconds) { [weak self] in
+                guard let self, let key = self.breathKey, key.easedFrom != nil, key.pulses,
+                      self.glowLayer.animation(forKey: "breathe") == nil else { return }
+                let steady = CABasicAnimation(keyPath: "opacity")
+                steady.fromValue = key.peakOpacity
+                steady.toValue = key.troughOpacity
+                steady.duration = key.breathSeconds / 2
+                steady.autoreverses = true
+                steady.repeatCount = .infinity
+                steady.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                self.glowLayer.add(steady, forKey: "breathe")
+            }
+            glowLayer.add(pulse, forKey: "breathe")
+        } else {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = appearance.peakOpacity
+            animation.toValue = appearance.troughOpacity
+            animation.duration = appearance.breathSeconds / 2
+            animation.autoreverses = true
+            animation.repeatCount = .infinity
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            glowLayer.add(animation, forKey: "breathe")
+        }
+    }
+
+    /// The soft glow's own wind-down: one keyframe pair per cycle — peak, trough at its middle, peak at its end —
+    /// each cycle half a second longer than the one before, until the idle period is reached. The ease plays once;
+    /// when it ends the relay hands the layer over to the steady idle pulse. No display link is spent on the soft
+    /// style's breathing.
+    private static func windDownPulse(peak: Double, trough: Double, from: Double, to: Double,
+                                      onFinished: @escaping () -> Void) -> CAKeyframeAnimation {
+        var times: [Double] = [0], values: [Double] = [peak], cursor: Double = 0, period = from
+        while period < to - 0.01 {
+            cursor += period / 2
+            times.append(cursor); values.append(trough)
+            cursor += period / 2
+            times.append(cursor); values.append(peak)
+            period = min(to, period + GlowAnimator.windDownStep)
+        }
+        let total = max(cursor, 0.1)
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.keyTimes = times.map { NSNumber(value: $0 / total) }
+        animation.values = values
+        animation.calculationMode = .linear
+        animation.timingFunctions = (1..<max(1, times.count)).map { _ in CAMediaTimingFunction(name: .easeInEaseOut) }
+        animation.repeatCount = 1
+        animation.duration = total
+        animation.isRemovedOnCompletion = false
+        animation.fillMode = .forwards
+        animation.delegate = AnimationRelay(onFinished)
+        return animation
+    }
+}
+
+/// Core Animation's delegate needs an NSObject; the controller is not one. This relay only forwards the
+/// completion of the animation it was handed, so the controller keeps its own state.
+@MainActor
+private final class AnimationRelay: NSObject, @preconcurrency CAAnimationDelegate {
+    private let onFinished: () -> Void
+    init(_ onFinished: @escaping () -> Void) { self.onFinished = onFinished }
+
+    func animationDidStop(_ anim: CAAnimation, finished flag: Bool) {
+        guard flag else { return }
+        onFinished()
     }
 }

@@ -82,6 +82,38 @@ final class GlowAppearanceTests: XCTestCase {
         XCTAssertFalse(a.breathing)
     }
 
+    func testWindDownLengthensEachCycleWithoutSkippingTheWorkingOne() {
+        // From a 2 s working period to an 8 s idle one, half a second longer each cycle.
+        // The first cycle after work ends still runs at the working period the user tuned.
+        let first = GlowAnimator.woundDown(phase: 0, from: 2, to: 8, since: 1.9)
+        XCTAssertEqual(first.period, 2)
+        let second = GlowAnimator.woundDown(phase: 0, from: 2, to: 8, since: 4.4)
+        XCTAssertEqual(second.period, 2.5, "the second cycle is half a second longer")
+        // …and the wave stays continuous: phase is whole cycles plus the fraction of the one it is in.
+        // At 4.4 s the first cycle (2 s) is done and the second (2.5 s) is 2.4 s in.
+        XCTAssertEqual(first.phase, 0.95, accuracy: 0.001)
+        XCTAssertEqual(second.phase, 1 + 2.4 / 2.5, accuracy: 0.001)
+    }
+
+    func testWindDownReachesTheIdlePeriodAndStaysThere() {
+        // Long enough for every step (2, 2.5, 3 … 8): the period clamps at the idle target and the phase keeps
+        // advancing at it, so the glow settles into its idle rhythm without a seam. The gradient is 12 cycles
+        // (2 … 7.5) totalling 57 s; the remaining 10 s run at 8 s apiece, i.e. 10/8 more turns of the wave.
+        var consumed = 0.0, period = 2.0
+        var cycles = 0
+        while period < 8 { consumed += period; period = min(8, period + 0.5); cycles += 1 }
+        let settled = GlowAnimator.woundDown(phase: 0, from: 2, to: 8, since: consumed + 10)
+        XCTAssertEqual(settled.period, 8)
+        XCTAssertEqual(settled.phase, Double(cycles) + 10 / 8, accuracy: 0.001)
+    }
+
+    func testWindDownFromAnAlreadyIdleRhythmIsTheRhythm() {
+        // No growth to ease through: the answer is the phase itself, untouched.
+        let steady = GlowAnimator.woundDown(phase: 3.25, from: 8, to: 8, since: 5)
+        XCTAssertEqual(steady.period, 8)
+        XCTAssertEqual(steady.phase, 3.25)
+    }
+
     @MainActor
     func testGlowFollowsPauseAndHide() async {
         let defaults = UserDefaults(suiteName: "AgentHUDTests.\(UUID().uuidString)")!

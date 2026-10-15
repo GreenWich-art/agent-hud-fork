@@ -47,6 +47,10 @@ final class GlowAnimator {
     private var renderer: GlowFrameRenderer?
     private var breathSeconds = 3.0
     private var breathAmplitude = 0.6
+    /// The rhythm eases from a faster period to `breathSeconds` one cycle at a time when work just ended, so the
+    /// glow reads as slowing down rather than switching. `phase` is the cycle count the effect stood at (its warped
+    /// time over its period) when the ease began, kept absolute so the wave continues rather than restarts.
+    private var windDown: (from: Double, at: CFTimeInterval, phase: Double)?
     private var startTime: CFTimeInterval = 0
     private var fadeStart: CFTimeInterval = 0
     private var fadeFrom = 0.0
@@ -56,6 +60,9 @@ final class GlowAnimator {
     private var frameCost: CFTimeInterval = 0
     private var onRest: (() -> Void)?
 
+    /// How much longer each cycle of a wind-down is than the one before.
+    nonisolated static let windDownStep: Double = 0.5
+
     init(host: NSView, layer: CALayer) {
         self.host = host
         self.layer = layer
@@ -64,12 +71,20 @@ final class GlowAnimator {
     var isRunning: Bool { link != nil }
 
     /// Starts the effect, or keeps it running with new geometry or colours without restarting its clock.
+    /// A period that grows while the effect runs eases into the new one cycle by cycle; one that shrinks takes
+    /// effect at once, as work resuming should.
     func play(_ renderer: GlowFrameRenderer, breathSeconds: Double, breathAmplitude: Double) {
+        let now = CACurrentMediaTime()
+        if link != nil, breathSeconds > self.breathSeconds + 0.05 {
+            let current = rhythm(at: now)
+            windDown = (from: self.breathSeconds, at: now, phase: current.time / current.period)
+        } else if breathSeconds < self.breathSeconds - 0.05 {
+            windDown = nil
+        }
         self.renderer = renderer
         self.breathSeconds = breathSeconds
         self.breathAmplitude = breathAmplitude
         onRest = nil
-        let now = CACurrentMediaTime()
         if link == nil {
             startTime = now
             fade(from: 0, to: 1, at: now)
@@ -128,8 +143,9 @@ final class GlowAnimator {
         let rested = fadeTo == 0 && now - fadeStart >= Self.fadeDuration
         guard rested || now - lastFrame >= max(frameInterval, frameCost * costSpacing) else { return }
         lastFrame = now
-        let frame = renderer.render(time: now - startTime, blend: blend(at: now),
-                                    breathSeconds: breathSeconds, breathAmplitude: breathAmplitude)
+        let rhythm = rhythm(at: now)
+        let frame = renderer.render(time: rhythm.time, blend: blend(at: now),
+                                    breathSeconds: rhythm.period, breathAmplitude: breathAmplitude)
         let cost = CACurrentMediaTime() - now
         frameCost = frameCost == 0 ? cost : frameCost * 0.8 + cost * 0.2
         updateFrameRate()
@@ -143,6 +159,35 @@ final class GlowAnimator {
         let completion = onRest
         stop()
         completion?()
+    }
+
+    /// The effect's warped clock: the seconds a constant period would need to stand where the glow stands now.
+    /// While a wind-down runs, cycle k since the ease began lasts `from + (k-1) * windDownStep` seconds — the
+    /// first one still at the working period, each later one longer — until the target period is reached. The wave
+    /// stays continuous because only whole cycles are inserted: `time / period` never jumps.
+    private func rhythm(at now: CFTimeInterval) -> (time: Double, period: Double) {
+        let elapsed = now - startTime
+        guard elapsed > 0 else { return (0, breathSeconds) }
+        guard let ease = windDown else { return (elapsed, breathSeconds) }
+        let state = Self.woundDown(phase: ease.phase, from: ease.from, to: breathSeconds, since: now - ease.at)
+        return (state.phase * state.period, state.period)
+    }
+
+    /// Where a wind-down stands `since` seconds after it began: the cycle count it has reached and the period it
+    /// is now in. Pure math, so a test can walk it second by second.
+    /// - phase: the cycle count (fractional) the effect stood at when the ease began.
+    /// - from: the period it began from; `to`: the period it eases to.
+    nonisolated static func woundDown(phase: Double, from: Double, to: Double, since: Double) -> (phase: Double, period: Double) {
+        guard since > 0, from < to - 0.01 else { return (phase, max(from, to)) }
+        var consumed = 0.0, completed = 0
+        while true {
+            let next = min(to, from + Double(completed) * Self.windDownStep)
+            if consumed + next > since { break }
+            consumed += next
+            completed += 1
+        }
+        let period = min(to, from + Double(completed) * Self.windDownStep)
+        return (phase + Double(completed) + (since - consumed) / period, period)
     }
 }
 
