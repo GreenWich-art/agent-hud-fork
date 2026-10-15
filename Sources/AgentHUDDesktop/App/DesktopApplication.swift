@@ -24,6 +24,7 @@ public final class DesktopApplication {
     private let antigravityApprovals = AntigravityPermissionObserver()
     private let deepseekQuestions = DeepSeekQuestionObserver()
     private let codexDesktopApprovals = CodexDesktopPermissionObserver()
+    private let workBuddyApprovals = WorkBuddyApprovalObserver()
     private var notch: IslandController?
     private var statusItem: StatusItemController?
     private lazy var settingsWindow = SettingsWindowController(
@@ -147,6 +148,7 @@ public final class DesktopApplication {
             deepseekQuestions.setEnabled(settings.settings.clientHooks)
             codexDesktopApprovals.updateSessions(store.report?.sessions ?? [])
             codexDesktopApprovals.setEnabled(settings.settings.clientHooks)
+            workBuddyApprovals.setEnabled(true)
         }
         store.start()
         startRecording()
@@ -161,6 +163,7 @@ public final class DesktopApplication {
         antigravityApprovals.stop()
         deepseekQuestions.stop()
         codexDesktopApprovals.stop()
+        workBuddyApprovals.stop()
         // Quitting must never leave a client waiting on an answer that is no longer coming.
         PermissionRequests.shared.stop()
         demoScript?.stop()

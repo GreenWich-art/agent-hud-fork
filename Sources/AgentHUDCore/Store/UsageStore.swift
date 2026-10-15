@@ -276,9 +276,14 @@ public final class UsageStore {
 
     public var hasLiveSession: Bool { view.sessions.contains { $0.phase.isInFlight } }
 
-    /// Whether any client is waiting for the user to answer a permission request right now. The glow carries this as
-    /// its own colour and rhythm, so the HUD asks for attention rather than only reporting it.
-    public var hasPendingApproval: Bool { !PermissionRequests.shared.pending.isEmpty }
+    /// Whether any client is waiting for the user to answer a permission request right now: one the HUD can answer
+    /// through its channel, or one the client says it is waiting on its user for — WorkBuddy's own approval dialog,
+    /// which no hook carries, reports itself that way. The glow carries this as its own colour and rhythm, so the
+    /// HUD asks for attention rather than only reporting it.
+    public var hasPendingApproval: Bool {
+        let permissions = PermissionRequests.shared
+        return !permissions.pending.isEmpty || !permissions.waitingSessions.isEmpty
+    }
 
     public var updatedAt: Date? { report?.generatedAt }
 
