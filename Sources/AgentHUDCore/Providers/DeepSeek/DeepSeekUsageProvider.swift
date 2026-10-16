@@ -29,7 +29,7 @@ public actor DeepSeekUsageProvider: UsageProvider, LedgerRecording {
         let directory = DeepSeekLocator.dataDirectory
         return DeepSeekUsageProvider(directory: directory, transcripts: DeepSeekTranscriptStore(
             root: directory.appendingPathComponent("sessions"), ledger: ledger),
-            readBalance: { try await DeepSeekBalanceClient(directory: directory).fetch() },
+            readBalance: { try await DeepSeekBalanceClient(directory: directory).read() },
             readProcessStarts: { await DeepSeekRuntime.processStarts(directory: directory) }, ledger: ledger)
     }
 

@@ -2,6 +2,9 @@ import Foundation
 
 public struct DeepSeekBalanceClient: Sendable {
     public let directory: URL
+    /// The transport the key's read goes through; the tests point it at an answer of their own.
+    var http = ProviderHTTP()
+
     public init(directory: URL) { self.directory = directory }
 
     public func fetch() async throws -> DeepSeekBalance {
@@ -63,4 +66,30 @@ public struct DeepSeekBalanceClient: Sendable {
       console.log(JSON.stringify({error: 'credentials'}));
     });
     """#
+
+    /// The official balance read with an API key the user keeps in WorkBuddy's model list, for when the Harness
+    /// is not the credential's home — its app deleted, or never installed. The same endpoint answers either
+    /// credential, so this read needs no helper process and no Harness install.
+    public func fetch(apiKey key: String) async throws -> DeepSeekBalance {
+        do {
+            let data = try await http.data(Self.balanceURL, headers: ["Authorization": "Bearer \(key)"])
+            return try JSONDecoder().decode(DeepSeekBalance.self, from: data)
+        } catch let error as ProviderHTTPError {
+            throw UsageProviderError(error.isAuthentication
+                ? L10n.text("DeepSeek API Key 无效或无权读取余额", "DeepSeek API key cannot read the balance")
+                : L10n.text("DeepSeek 余额服务返回 HTTP \(error.status)", "DeepSeek balance service returned HTTP \(error.status)"))
+        } catch {
+            throw UsageProviderError(L10n.text("DeepSeek 余额读取失败，请检查网络后重试", "Cannot read DeepSeek balance; check the connection and retry"))
+        }
+    }
+
+    /// The balance as the app can read it for this account: the API key WorkBuddy keeps when there is one, the
+    /// Harness's own credentials otherwise. Both credentials answer the same official endpoint; the key's read
+    /// needs no helper process, so it comes first.
+    func read(home: URL = FileManager.default.homeDirectoryForCurrentUser) async throws -> DeepSeekBalance {
+        if let key = DeepSeekAPIKeys.read(home: home).first { return try await fetch(apiKey: key) }
+        return try await fetch()
+    }
+
+    private static let balanceURL = URL(string: "https://api.deepseek.com/user/balance")!
 }

@@ -19,6 +19,15 @@ struct ProviderHTTP: Sendable {
         return try ProviderJSON.read(await send(request))
     }
 
+    /// The raw bytes of a credential-bearing GET, for an answer the caller decodes itself.
+    func data(_ url: URL, headers: [String: String] = [:], timeout: TimeInterval = 12) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+        return try await send(request)
+    }
+
     private static func requestData(_ request: URLRequest) async throws -> Data {
         let config = URLSessionConfiguration.ephemeral
         config.httpShouldSetCookies = false

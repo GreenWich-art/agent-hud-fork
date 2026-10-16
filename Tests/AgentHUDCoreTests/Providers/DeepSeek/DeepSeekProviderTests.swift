@@ -427,6 +427,73 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertTrue(empty.balances.isEmpty)
     }
 
+    func testDeepSeekAPIKeysAreReadFromWorkBuddysOwnModelList() throws {
+        let home = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let models = home.appendingPathComponent(".workbuddy")
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        let entries: [[String: String]] = [
+            ["id": "flash", "vendor": "DeepSeek", "url": "https://api.deepseek.com/chat/completions", "apiKey": "sk-first"],
+            ["id": "pro", "vendor": "Custom", "url": "https://api.deepseek.com", "apiKey": "sk-first"],
+            ["id": "proxy", "vendor": "Custom", "url": "https://llmapi.paratera.com/v1", "apiKey": "sk-proxy"],
+            ["id": "glm", "vendor": "GLM Coding Plan", "url": "https://open.bigmodel.cn/api/coding/paas/v4", "apiKey": "sk-glm"],
+            ["id": "empty", "vendor": "DeepSeek", "url": "https://api.deepseek.com/v1", "apiKey": ""],
+            ["id": "plain", "vendor": "DeepSeek", "url": "http://api.deepseek.com/v1", "apiKey": "sk-plain"],
+        ]
+        try JSONSerialization.data(withJSONObject: entries).write(to: models.appendingPathComponent("models.json"))
+        XCTAssertEqual(DeepSeekAPIKeys.read(home: home), ["sk-first"],
+                       "one key per account, whatever entry or vendor name carries it; a proxy's is another product")
+        XCTAssertTrue(DeepSeekAPIKeys.read(home: home.appendingPathComponent("nowhere")).isEmpty)
+    }
+
+    func testTheAPIKeyAnswersTheBalanceWithoutTheHarness() async throws {
+        let home = try temporaryDirectory(), directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: directory) }
+        let models = home.appendingPathComponent(".workbuddy")
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: [["url": "https://api.deepseek.com/v1", "apiKey": "sk-test"]])
+            .write(to: models.appendingPathComponent("models.json"))
+        final class Request: @unchecked Sendable { var url: URL?; var authorization: String? }
+        let seen = Request(), answer = Self.balanceJSON
+        var client = DeepSeekBalanceClient(directory: directory)
+        client.http.send = { request in
+            seen.url = request.url
+            seen.authorization = request.value(forHTTPHeaderField: "Authorization")
+            return Data(answer.utf8)
+        }
+        let balance = try await client.read(home: home)
+        XCTAssertEqual(balance.balances[0].total, Decimal(string: "8.85"))
+        XCTAssertEqual(seen.url, URL(string: "https://api.deepseek.com/user/balance"))
+        XCTAssertEqual(seen.authorization, "Bearer sk-test")
+    }
+
+    func testAKeyTheBalanceServiceRefusesIsReportedRatherThanFallingBack() async throws {
+        let home = try temporaryDirectory(), directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: directory) }
+        let models = home.appendingPathComponent(".workbuddy")
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: [["url": "https://api.deepseek.com/v1", "apiKey": "sk-test"]])
+            .write(to: models.appendingPathComponent("models.json"))
+        var client = DeepSeekBalanceClient(directory: directory)
+        client.http.send = { _ in throw ProviderHTTPError(status: 403) }
+        do {
+            _ = try await client.read(home: home)
+            XCTFail("a refused key says so; it does not quietly try another credential")
+        } catch let error as UsageProviderError {
+            XCTAssertEqual(error.message, L10n.text("DeepSeek API Key 无效或无权读取余额", "DeepSeek API key cannot read the balance"))
+        }
+    }
+
+    func testWithoutAnAPIKeyTheHarnessCredentialsRemainTheFallback() async throws {
+        let home = try temporaryDirectory(), directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: directory) }
+        // An empty home has no key, so the Harness path runs: with no Harness here it fails, which is the point.
+        var answered = false
+        do { _ = try await DeepSeekBalanceClient(directory: directory).read(home: home); answered = true }
+        catch { XCTAssertTrue(error is UsageProviderError) }
+        XCTAssertFalse(answered, "no key means the Harness's own credentials are still consulted")
+    }
+
     func testPricingAccountsForCurrencyModelCacheAndPeakBoundaries() throws {
         let formatter = ISO8601DateFormatter()
         for (instant, peak) in [("2026-09-07T00:59:59Z", false), ("2026-09-07T01:00:00Z", true),
