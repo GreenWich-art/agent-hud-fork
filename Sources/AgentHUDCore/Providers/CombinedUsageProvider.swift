@@ -179,7 +179,9 @@ public struct CombinedUsageProvider: UsageProvider {
                                $0.merge($1, uniquingKeysWith: +)
                            },
                            forgottenAccountProviders: reports.compactMap(\.forgottenAccountProviders).reduce(nil) { ($0 ?? []).union($1) },
-                           sessionUsage: sessionUsage, periods: periods, recached: recached)
+                           sessionUsage: sessionUsage,
+                           sessionCredits: reports.compactMap(\.sessionCredits).reduce(into: [String: SessionCredits]()) { $0.merge($1) { _, new in new } },
+                           periods: periods, recached: recached)
     }
 
     /// Where each session's tokens went. A session is read again when its counts move or when the ledger has written any
