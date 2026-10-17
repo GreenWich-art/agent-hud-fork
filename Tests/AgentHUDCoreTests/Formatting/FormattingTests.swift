@@ -18,6 +18,17 @@ final class CountdownTests: XCTestCase {
         XCTAssertEqual(Countdown.format(6 * 3600 + 40 * 60), "6h 40m")
     }
 
+    func testAVendorsWallClockReadsInTheVendorsZoneWhateverThisMacRunsIn() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let expected = calendar.date(from: DateComponents(year: 2026, month: 10, day: 14, hour: 1, minute: 6, second: 3))
+        XCTAssertEqual(DateParsing.serverWallClock("2026-10-14 01:06:03"), expected,
+                       "a 429's reset time is the vendor's server time, so it reads the same in every zone")
+        for shape in ["2026-10-14 01:06:03 ", "2026-10-14T01:06:03", "2026-10-14 01:06:3", "2026-13-14 01:06:03"] {
+            XCTAssertNil(DateParsing.serverWallClock(shape), shape)
+        }
+    }
+
     func testMinutesOnlyUnderAnHour() {
         XCTAssertEqual(Countdown.format(51 * 60), "51m")
         XCTAssertEqual(Countdown.format(59 * 60 + 30), "59m")

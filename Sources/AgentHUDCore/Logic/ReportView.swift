@@ -70,7 +70,14 @@ public struct ReportView: Sendable {
     public init(report: UsageReport?, agents: [AgentDescriptor], settings: Settings, approvals: [PermissionRequest] = [],
                 waiting: [String: Date] = [:], now: Date, failure: String? = nil) {
         let visible = agents.filter { Self.isPresent($0, in: report) }
-        let enabled = visible.filter(\.enabled)
+        // A plan whose own quota the app reads is the reading for the models that go through it, so a row charged to
+        // that plan which is not one of its windows — a ceiling a transcript logged for such a model — is not shown
+        // beside it: the plan's windows are rows of their own the moment they show a level.
+        let readPools = Self.poolsRead(visible.filter(\.enabled), report: report, now: now, failure: failure)
+        let enabled = visible.filter { agent in
+            guard agent.enabled, let pool = agent.billingPool, !agent.id.hasPrefix(pool.id + ":") else { return agent.enabled }
+            return !readPools.contains(pool.id)
+        }
         let shown = enabled.filter { settings.accountVisible($0.displayAccountID) }
         let rows = enabled.filter { !$0.isAPIBilled }.enumerated()
             .filter { settings.accountVisible($0.element.displayAccountID) }.map { index, agent in
@@ -154,6 +161,21 @@ public struct ReportView: Sendable {
         guard let inventory = accounts?[agent.account?.provider ?? agent.vendor] else { return true }
         guard let account = agent.account else { return inventory.isEmpty }
         return inventory.contains { $0.account.id == account.id && $0.isCurrent }
+    }
+
+    /// The pools whose own windows show a level: the plans the app reads the quota of, whose reading stands for every
+    /// model that goes through them. A window is a row of its pool's own — its id is the pool's, and the window's — so a
+    /// row that merely carries the pool, such as a ceiling, does not count as its reading. A pool whose read failed
+    /// shows nothing and stands for nothing.
+    private static func poolsRead(_ agents: [AgentDescriptor], report: UsageReport?, now: Date, failure: String?) -> Set<String> {
+        Set(agents.compactMap { agent -> String? in
+            guard let pool = agent.billingPool, agent.id.hasPrefix(pool.id + ":") else { return nil }
+            // A window without a report has no reading that shows a level, the same rule a row's level follows.
+            guard let report, report.snapshot(for: agent.id)?.remainingPct != nil else { return nil }
+            let reading = report.assess(.window(agent), now: now)
+            let assessment = failure.map(reading.failing) ?? reading
+            return assessment.showsLevel ? pool.id : nil
+        })
     }
 
     /// Each glow segment's level, in glow order.

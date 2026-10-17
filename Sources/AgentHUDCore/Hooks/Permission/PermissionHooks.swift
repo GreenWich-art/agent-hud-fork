@@ -117,7 +117,10 @@ public enum PermissionHooks {
 
         func home(_ base: URL) -> URL {
             if case .codex = self { return CodexLocator.dataDirectory(home: base) }
-            if case .codebuddy = self { return CodeBuddySessions.home(base) }
+            // CodeBuddy's settings folder, which its hooks live in: the same one WorkBuddy's source reads when the two
+            // clients share a folder, so this is the folder the client reads, not the one the source reads transcripts
+            // from (`CodeBuddySessions.home` declines a folder WorkBuddy already reads).
+            if case .codebuddy = self { return CodeBuddySessions.folder(base) }
             if case .qwen = self { return QwenSessions.home(base) }
             if case .antigravity = self { return AntigravitySessions.home(base) }
             if case .deepseek = self { return DeepSeekLocator.dataDirectory(environment: ProcessInfo.processInfo.environment, home: base) }

@@ -17,7 +17,7 @@ Agent HUD Open reads agent activity and usage metadata on your Mac. It has no Ag
 | OpenCode, Kimi, GLM, Pi | Local JSON/SQLite session records and supported provider configuration, including an `ANTHROPIC_BASE_URL` and its token from the environment or Claude Code's `settings.json` `env` that point at a Kimi or GLM plan; automatically prepared Pi lifecycle observer and OpenCode completion plugin | Official Kimi, GLM, OpenCode Go, and Pi ChatGPT quota endpoints where configured |
 | GitHub Copilot CLI | Local session events and OpenTelemetry export files | GitHub Copilot quota endpoint with the GitHub CLI sign-in, only after consent in Settings |
 | OpenClaw, Hermes Agent, ZCode, CodeBuddy, Qwen Code | Local session databases and transcripts | None |
-| WorkBuddy | Local session databases and transcripts, the app's own per-session metering (`session_usage`) and its session names, both in `~/.workbuddy/workbuddy.db` | Official GLM Coding Plan quota endpoint with the key a WorkBuddy model entry keeps in `~/.workbuddy/models.json` |
+| WorkBuddy | Local session databases and transcripts, the ceilings its transcripts logged in 429 answers, the app's own per-session metering (`session_usage`) and its session names, both in `~/.workbuddy/workbuddy.db` | Official GLM Coding Plan quota endpoint with the key a WorkBuddy model entry keeps in `~/.workbuddy/models.json` |
 | Qoder, Qoder CN, QoderWork | Nothing read; the approval hook is added to each build's settings | None |
 
 Per-client fields, endpoints and stored data: [providers](providers.md). Token counts, percentages, alert levels, request intervals and reading retention: [usage semantics](usage-semantics.md).

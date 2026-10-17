@@ -4,7 +4,9 @@ import Foundation
 /// Claude Code style `Stop` handler in `settings.json` of CodeBuddy Code's home; `Stop` takes no matcher and `timeout`
 /// is in seconds.
 enum CodeBuddyHookFormat: CompletionHookFormat {
-    static func configuration(home: URL) -> URL { CodeBuddySessions.home(home).appendingPathComponent("settings.json") }
+    /// The client's own configuration folder, which `CODEBUDDY_CONFIG_DIR` moves — not `CodeBuddySessions.home`, which
+    /// declines a folder WorkBuddy's source already reads: the hooks must land where this client reads its settings.
+    static func configuration(home: URL) -> URL { CodeBuddySessions.folder(home).appendingPathComponent("settings.json") }
 
     /// `Stop` names no turn: the transcript's final assistant message identifies it, else the callback time does.
     /// `StopFailure` and other events are not completions.

@@ -37,8 +37,11 @@ public enum DateParsing {
     }
 
     /// A wall-clock time without a zone, such as the reset time in a 429 message (`2026-10-14 01:06:03`), read in the
-    /// zone this Mac runs in: the client that logged it logs in the same zone. Only that fixed shape parses.
-    static func localWallClock(_ text: String) -> Date? {
+    /// vendor's own zone rather than this Mac's. Those messages come from the vendor's servers, which report in
+    /// Beijing time: measured against the error's own timestamp, a reset read this way falls 2–5 hours ahead — inside
+    /// the 5-hour window the message names — where reading it as UTC would fall 10–13 hours ahead, and as a western
+    /// zone's local time the window would end hours late. Only that fixed shape parses.
+    static func serverWallClock(_ text: String) -> Date? {
         let bytes = Array(text.utf8)
         guard bytes.count == 19,
               let year = fourDigits(bytes, 0), bytes[4] == UInt8(ascii: "-"),
@@ -50,7 +53,7 @@ public enum DateParsing {
         else { return nil }
         guard (1...12).contains(month), (1...31).contains(day), hour < 24, minute < 60, second < 60 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .current
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         let components = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
         return calendar.date(from: components)
     }

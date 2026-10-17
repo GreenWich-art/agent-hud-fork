@@ -148,6 +148,13 @@ struct SessionDetailView: View {
                               : L10n.text("已按模型归因", "Attributed to models"),
                           L10n.text("WorkBuddy 自身计量记录的会话积分消耗；无法唯一确定模型的积分单独列为未归因",
                                     "Credits WorkBuddy's own metering charged the session; the part no one model could be pinned on shows as unattributed")))
+            // The same metering records the context the session ran against, which no model call reports on its own.
+            if let used = credits.used, let size = credits.size, size > 0 {
+                items.append((L10n.text("计量上下文", "Metered context"), TokenFormat.short(used),
+                              L10n.text("共 ", "Of ") + TokenFormat.short(size),
+                              L10n.text("WorkBuddy 自身计量记录的上下文用量与上限",
+                                        "The context usage and limit WorkBuddy's own metering recorded")))
+            }
         }
         items.append((L10n.text("轮次", "Turns"), usage.flatMap { $0.turnCount > 0 ? $0.turnCount.formatted() : nil } ?? "—",
                       usage.map { L10n.text("\($0.calls) 次调用", $0.calls == 1 ? "1 call" : "\($0.calls.formatted()) calls") } ?? "",
